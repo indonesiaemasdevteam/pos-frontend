@@ -1,0 +1,499 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+  output   = "../generated/prisma"
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model LoginHistory {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  timestamp DateTime @default(now())
+  ipAddress String?
+  userAgent String?
+}
+
+// 🔴 Tambahkan field relasi balikan pada model User
+model User {
+  id            String         @id @default(cuid())
+  name          String?
+  username      String
+  email         String
+  emailVerified DateTime?
+  password      String
+  image         String?
+  refreshTokens RefreshToken[]
+  accounts      Account[]
+  sessions      Session[]
+  roles         Role[]         @relation("UserRoles")
+  status        String         @default("active")
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  lastLogin     DateTime       @default(now())
+  deletedAt     DateTime?
+  isDeleted     Boolean        @default(false)
+  loginHistory  LoginHistory[]
+  deletionLog   DeletionLog[]
+  historyLog    HistoryLog[]
+
+  // Posts
+  postsAuthored Post[] @relation("PostsAuthored")
+  postsUpdated  Post[] @relation("PostUpdatedBy")
+
+  // Contact info
+  phoneNumber String?
+  country     String?
+  region      String?
+  city        String?
+  countryCode String?
+
+  // 2FA
+  twoFactorEnabled  Boolean @default(false)
+  twoFactorSecret   String?
+  backupCodes       String?
+  twoFactorVerified Boolean @default(false)
+
+  // Media
+  Media Media[]
+
+  // 🔴 Calendar System Fields - TAMBAHKAN relasi balikan
+  ownedCalendars     Calendar[]          @relation("OwnedCalendars")
+  createdEvents      CalendarEvent[]     @relation("CreatedEvents")
+  calendarMembers    CalendarMember[]
+  guestInvitations   GuestOnEvent[]
+  eventNotifications EventNotification[] // 🔴 TAMBAHKAN INI!
+
+  @@index([email, isDeleted])
+  @@index([username, isDeleted])
+}
+
+model HistoryLog {
+  id            String   @id @default(cuid())
+  entityId      String // ID dari entitas yang terlibat (userId, postId, dsb)
+  entityType    String // Nama entitas: "user", "post", "comment", dll
+  actionType    String // Jenis aksi: "delete", "update", "background_job", dll
+  performedById String? // ID user yang melakukan aksi (bisa null untuk job system)
+  performedBy   User?    @relation(fields: [performedById], references: [id])
+  performedAt   DateTime @default(now())
+  reason        String? // Optional alasan
+
+  @@index([entityType, entityId])
+  @@index([actionType])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([identifier, token])
+}
+
+model Role {
+  id        String   @id @default(cuid()) // renamed from roleid
+  role      String   @unique
+  users     User[]   @relation("UserRoles")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String
+  updatedBy String
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expires   DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DeletionLog {
+  id          String   @id @default(cuid())
+  deletedId   String // ID dari entitas yang dihapus (userId, postId, dll)
+  deletedType String // Jenis entitas: "user", "post", "comment"
+  deletedById String // ID user yang menghapus
+  deletedBy   User     @relation(fields: [deletedById], references: [id])
+  deletedAt   DateTime
+  reason      String?
+
+  @@index([deletedType, deletedId])
+}
+
+model Post {
+  id           String   @id @default(cuid())
+  img          String
+  title        String
+  date         DateTime
+  subTitle     String   @db.Text
+  postLink     String
+  truncateText String?
+
+  // Relasi ke User
+  authorId String
+  author   User   @relation("PostsAuthored", fields: [authorId], references: [id])
+
+  // Relasi ke User (yang terakhir update)
+  updatedById String?
+  updatedBy   User?   @relation("PostUpdatedBy", fields: [updatedById], references: [id])
+
+  // ✅ Relasi ke tags melalui tabel pivot PostTag
+  tags PostTag[]
+
+  isDeleted   Boolean   @default(false)
+  isPublished Boolean   @default(true)
+  publishedAt DateTime?
+  views       Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Tag {
+  id   String @id @default(cuid())
+  name String @unique
+
+  // ✅ Relasi balik ke post melalui PostTag
+  posts       PostTag[]
+  MediaTag    MediaTag[]
+  CalendarTag CalendarTag[] // 🔴 Untuk tag kalender
+}
+
+model PostTag {
+  postId String
+  tagId  String
+
+  post Post @relation(fields: [postId], references: [id])
+  tag  Tag  @relation(fields: [tagId], references: [id])
+
+  @@id([postId, tagId]) // ✅ Composite Primary Key untuk mencegah duplikat
+}
+
+model VideoPlayback {
+  id          String  @id @default(cuid())
+  videoUrl    String  @db.Text
+  title       String
+  description String
+  editor      String
+  note        String?
+  isLatest    Boolean @default(false) // ✅ kolom tambahan
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ImageGallery {
+  id String @id @default(cuid())
+
+  url      String
+  publicId String  @unique
+  folder   String?
+  width    Int?
+  height   Int?
+  bytes    Int?
+
+  // Metadata pemakaian
+  entityType String? // "post", "landing", "profile", dll
+  entityId   String?
+
+  // Soft delete
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+  remarks   String?   @db.Text // untuk alasan delete atau notes
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum MediaType {
+  VIDEO
+  IMAGE
+}
+
+model MediaTag {
+  mediaId String
+  tagId   String
+
+  media Media @relation(fields: [mediaId], references: [id])
+  tag   Tag   @relation(fields: [tagId], references: [id])
+
+  @@id([mediaId, tagId]) // cegah duplikat
+}
+
+model Media {
+  id   String    @id @default(cuid())
+  type MediaType
+  url  String    @db.Text
+
+  title       String?
+  description String? @db.Text
+  note        String?
+  editor      String? // ✅ ADD THIS
+  authorId    String
+  author      User    @relation(fields: [authorId], references: [id])
+
+  tags MediaTag[]
+
+  isFeatured  Boolean   @default(false)
+  sortOrder   Int       @default(0)
+  isPublished Boolean   @default(true)
+  publishedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type, createdAt])
+  @@index([isFeatured, createdAt])
+}
+
+// 🔴 CALENDAR SYSTEM MODELS
+
+enum CalendarRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+enum GuestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  TENTATIVE
+}
+
+model Calendar {
+  id          String  @id @default(cuid())
+  title       String
+  color       String  @default("#3b82f6") // Hex color
+  slug        String  @unique
+  description String?
+  isPublic    Boolean @default(false)
+
+  // Events in this calendar
+  events CalendarEvent[]
+
+  // Users who have access to this calendar
+  members CalendarMember[]
+
+  // Tags for categorization
+  tags CalendarTag[]
+
+  createdById String
+  createdBy   User   @relation("OwnedCalendars", fields: [createdById], references: [id])
+  type String @default("main")
+  // main | event | activity | promo | schedule | internal
+  categories CalendarCategory[]
+  // Metadata
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+  isActive  Boolean   @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([slug, isActive])
+  @@index([createdById, isActive])
+}
+model CalendarCategory {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String
+  color       String   @default("#405189")
+  icon        String?
+  description String?
+  isActive    Boolean  @default(true)
+
+  calendarId  String?
+  calendar    Calendar? @relation(fields: [calendarId], references: [id], onDelete: SetNull)
+
+  events      CalendarEvent[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([slug, calendarId])
+}
+// 🔴 Tambahkan field relasi balikan pada model CalendarEvent
+model CalendarEvent {
+  id          String   @id @default(cuid())
+  title       String
+  description String?  @db.Text
+  start       DateTime
+  end         DateTime
+  allDay      Boolean  @default(false)
+  url         String?
+
+  // Location information
+  location String?
+  categoryId   String?
+  calendarCategory    CalendarCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  // Recurrence settings (JSON string for complex rules)
+  recurrenceRule String?
+  recurrenceId   String? // For recurring events
+
+  // Relations
+  calendarId String
+  calendar   Calendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+
+  guests GuestOnEvent[]
+  tags   CalendarTag[]
+
+  // 🔴 Tambahkan relasi balikan ke EventNotification
+  notifications EventNotification[]
+
+  createdById String?
+  createdBy   User?   @relation("CreatedEvents", fields: [createdById], references: [id])
+
+  // Metadata
+  isDeleted          Boolean   @default(false)
+  deletedAt          DateTime?
+  isCancelled        Boolean   @default(false)
+  cancelledAt        DateTime?
+  cancellationReason String?
+  color    String? @default("#405189")
+  category String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([calendarId, start, end])
+  @@index([createdById, isDeleted])
+  @@index([start, end])
+}
+
+model CalendarMember {
+  id         String       @id @default(cuid())
+  calendarId String
+  calendar   Calendar     @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       CalendarRole @default(VIEWER)
+
+  // Notification preferences
+  emailNotifications Boolean @default(true)
+  pushNotifications  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([calendarId, userId])
+}
+
+model GuestOnEvent {
+  id      String        @id @default(cuid())
+  eventId String
+  event   CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId  String?
+  user    User?         @relation(fields: [userId], references: [id])
+  email   String?
+  name    String?
+  status  GuestStatus   @default(PENDING)
+
+  // Additional guest info
+  phoneNumber String?
+  rsvpNotes   String?  @db.Text
+  attended    Boolean? // Whether they actually attended
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([eventId, userId])
+  @@unique([eventId, email])
+  @@index([eventId, status])
+}
+
+model CalendarTag {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+  color       String  @default("#6b7280")
+
+  // Relations
+  calendarId String?
+  calendar   Calendar?      @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+  eventId    String?
+  event      CalendarEvent? @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  tagId      String?
+  tag        Tag?           @relation(fields: [tagId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([name, calendarId])
+  @@index([calendarId])
+  @@index([eventId])
+}
+
+model EventNotification {
+  id      String        @id @default(cuid())
+  eventId String
+  event   CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId  String
+  user    User          @relation(fields: [userId], references: [id])
+
+  // Notification settings
+  remindAt DateTime // When to send reminder
+  sentAt   DateTime? // When actually sent
+  method   String    @default("EMAIL") // EMAIL, PUSH, SMS
+  status   String    @default("PENDING") // PENDING, SENT, FAILED
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([eventId, userId])
+  @@index([remindAt, status])
+}
+
+// 🔴 Calendar System Enums (already defined above, but repeated for clarity)
+// enum CalendarRole {
+//   OWNER
+//   EDITOR
+//   VIEWER
+// }
+// 
+// enum GuestStatus {
+//   PENDING
+//   ACCEPTED
+//   DECLINED
+//   TENTATIVE
+// }
