@@ -6,25 +6,26 @@ import {
   reset_login_flag,
 } from "./reducer";
 
-export const loginUser = (user: any, router: any) => async (dispatch: any) => {
-  try {
-    const result = await signIn("credentials", {
-      email: user.email,
-      password: user.password,
-      redirect: false,
-    });
+export const loginUser =
+  (user: any, router: any) => async (dispatch: any) => {
+    try {
+      const result = await signIn("credentials", {
+        email: user.email,
+        password: user.password,
+        redirect: false,
+      });
 
-    if (result?.error) {
-      dispatch(apiError(result.error));
-      return;
+      if (result?.error) {
+        dispatch(apiError(result.error));
+        return;
+      }
+
+      dispatch(loginSuccess({ email: user.email }));
+      router.push("/dashboard");
+    } catch (error) {
+      dispatch(apiError(error));
     }
-
-    dispatch(loginSuccess({ email: user.email }));
-    router.push("/dashboard");
-  } catch (error) {
-    dispatch(apiError(error));
-  }
-};
+  };
 
 export const logoutUser = (router?: any) => async (dispatch: any) => {
   try {

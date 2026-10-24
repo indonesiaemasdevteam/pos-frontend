@@ -15,6 +15,9 @@ const isPublicApi = (req: NextRequest) => {
   return (
     pathname.startsWith("/api/auth") ||
     pathname === "/api/apps/auth/login/email" ||
+    pathname === "/api/apps/auth/merchant-login" ||
+    pathname === "/api/apps/auth/merchant-register" ||
+    pathname === "/api/apps/auth/merchant-regions" ||
     pathname.startsWith("/api/apps/region/") ||
     (pathname === "/api/apps/merchant/panel" && req.method === "POST") ||
     /\/api\/.*\/public(\/|$)/.test(pathname) ||
@@ -29,7 +32,10 @@ export async function middleware(req: NextRequest) {
   if (process.env.PREVIEW_MODE === "true") {
     const isPosApi =
       pathname.startsWith("/api/apps/merchant/") ||
-      pathname.startsWith("/api/apps/region/");
+      pathname.startsWith("/api/apps/region/") ||
+      pathname === "/api/apps/auth/merchant-login" ||
+      pathname === "/api/apps/auth/merchant-register" ||
+      pathname === "/api/apps/auth/merchant-regions";
 
     if (isPosApi) return NextResponse.next();
 
